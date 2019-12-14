@@ -19,30 +19,32 @@ namespace AWSSignatureV4
             this.Region = Region;
         }
 
-        public string Sign(DateTime Date, Uri uri, string service)
+        public string SignS3Get(DateTime date, Uri uri)
         {
+            string service = "s3";
+
             //Canonical Request
             string HTTPMethod = "GET" + "\n";
             string CanonicalURI = UriEncode(uri.AbsolutePath, false) + "\n";
             string CanonicalQuerystring = "" + "\n";
             string CanonicalHeaders = "host:" + uri.Host + "\n"
             + "x-amz-content-sha256:" + SHA256Hash("") + "\n"
-            + "x-amz-date:" + Date.ToString("yyyyMMddTHHmmssZ") + "\n";
+            + "x-amz-date:" + date.ToString("yyyyMMddTHHmmssZ") + "\n";
             string SignedHeaders = "host;x-amz-content-sha256;x-amz-date";
             string HashedPayload = SHA256Hash("");
 
             string CanonicalRequest = HTTPMethod + CanonicalURI + CanonicalQuerystring + CanonicalHeaders + "\n" + SignedHeaders + "\n" + HashedPayload;
-            
+
             //StringToSign
             string StringToSignStart = "AWS4-HMAC-SHA256" + "\n";
-            string TimeStamp = Date.ToString("yyyyMMddTHHmmssZ") + "\n";
-            string Scope = Date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request" + "\n";
+            string TimeStamp = date.ToString("yyyyMMddTHHmmssZ") + "\n";
+            string Scope = date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request" + "\n";
 
             string StringToSign = StringToSignStart + TimeStamp + Scope + SHA256Hash(CanonicalRequest);
 
             //Signature
             string firstKey = "AWS4" + AWSSecret;
-            Byte[] DateKey = HMACSHA256Hash(Encoding.UTF8.GetBytes(firstKey), Encoding.UTF8.GetBytes(Date.ToString("yyyyMMdd")));
+            Byte[] DateKey = HMACSHA256Hash(Encoding.UTF8.GetBytes(firstKey), Encoding.UTF8.GetBytes(date.ToString("yyyyMMdd")));
             Byte[] DateRegionKey = HMACSHA256Hash(DateKey, Encoding.UTF8.GetBytes(Region));
             Byte[] DateRegionServiceKey = HMACSHA256Hash(DateRegionKey, Encoding.UTF8.GetBytes(service));
             Byte[] SigningKey = HMACSHA256Hash(DateRegionServiceKey, Encoding.UTF8.GetBytes("aws4_request"));
@@ -52,12 +54,53 @@ namespace AWSSignatureV4
 
 
 
-            string AuthorizationHeader = "Credential=" + AWSAccessKey + "/" + Date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request,"
+            string AuthorizationHeader = "Credential=" + AWSAccessKey + "/" + date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request,"
                 + " SignedHeaders=" + SignedHeaders + ", Signature=" + ssignature;
 
             return AuthorizationHeader;
 
         }
+
+        public string SignFirehosePost(DateTime date, Uri uri, string payload)
+        {
+            string service = "firehose";
+
+            //Canonical Request
+            string HTTPMethod = "POST" + "\n";
+            string CanonicalURI = UriEncode(uri.AbsolutePath, false) + "\n";
+            string CanonicalQuerystring = "" + "\n";
+            string CanonicalHeaders = "host:" + uri.Host + "\n"
+            + "x-amz-date:" + date.ToString("yyyyMMddTHHmmssZ") + "\n"
+            + "x-amz-target:Firehose_20150804.PutRecord\n";
+            string SignedHeaders = "host;x-amz-date;x-amz-target";
+            string HashedPayload = SHA256Hash(payload);
+
+            string CanonicalRequest = HTTPMethod + CanonicalURI + CanonicalQuerystring + CanonicalHeaders + "\n" + SignedHeaders + "\n" + HashedPayload;
+
+            //StringToSign
+            string StringToSignStart = "AWS4-HMAC-SHA256" + "\n";
+            string TimeStamp = date.ToString("yyyyMMddTHHmmssZ") + "\n";
+            string Scope = date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request" + "\n";
+
+            string StringToSign = StringToSignStart + TimeStamp + Scope + SHA256Hash(CanonicalRequest);
+
+            ////Signature
+            string firstKey = "AWS4" + AWSSecret;
+            Byte[] DateKey = HMACSHA256Hash(Encoding.UTF8.GetBytes(firstKey), Encoding.UTF8.GetBytes(date.ToString("yyyyMMdd")));
+            Byte[] DateRegionKey = HMACSHA256Hash(DateKey, Encoding.UTF8.GetBytes(Region));
+            Byte[] DateRegionServiceKey = HMACSHA256Hash(DateRegionKey, Encoding.UTF8.GetBytes(service));
+            Byte[] SigningKey = HMACSHA256Hash(DateRegionServiceKey, Encoding.UTF8.GetBytes("aws4_request"));
+                       
+            var signature = HMACSHA256Hash(SigningKey, Encoding.UTF8.GetBytes(StringToSign));
+            string ssignature = BitConverter.ToString(signature).Replace("-", "").ToLower();
+                       
+            string AuthorizationHeader = "Credential=" + AWSAccessKey + "/" + date.ToString("yyyyMMdd") + "/" + Region + "/" + service + "/aws4_request,"
+                + " SignedHeaders=" + SignedHeaders + ", Signature=" + ssignature;
+
+            return AuthorizationHeader;
+
+        }
+
 
         public HttpRequestMessage CreateS3GetRequest(DateTime Date, Uri uri)
         {
@@ -72,9 +115,19 @@ namespace AWSSignatureV4
             return requestMessage;
         }
 
-        public Dictionary<string,string> GetHeaders()
+
+        public HttpRequestMessage CreateFirehosePostRequest(DateTime Date, Uri uri, string payload)
         {
-            return null;
+            HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, uri);
+
+            // Add our custom headers
+            requestMessage.Headers.Add("host", uri.Host);
+            requestMessage.Headers.Add("x-amz-date", Date.ToString("yyyyMMddTHHmmssZ"));
+            requestMessage.Headers.Add("x-amz-target", "Firehose_20150804.PutRecord");
+            requestMessage.Version = Version.Parse("1.1");
+            requestMessage.Content = new StringContent(payload, Encoding.UTF8, "application/x-amz-json-1.1");
+
+            return requestMessage;
         }
 
         private static string Hex(string text)

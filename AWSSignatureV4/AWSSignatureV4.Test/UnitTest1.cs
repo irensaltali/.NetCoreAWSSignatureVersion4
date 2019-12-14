@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Net.Http;
 using Xunit;
-using AWSSignatureV4;
 
 namespace AWSSignatureV4.Test
 {
@@ -28,13 +27,31 @@ namespace AWSSignatureV4.Test
 
             var client = new HttpClient();
             client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("AWS4-HMAC-SHA256", signv4.Sign(date, uri, "s3"));
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("AWS4-HMAC-SHA256", signv4.SignS3Get(date, uri));
 
             var result = client.SendAsync(signv4.CreateS3GetRequest(date, uri)).GetAwaiter().GetResult();
+            var response = result.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 
             Assert.Equal(System.Net.HttpStatusCode.OK, result.StatusCode);
+        }
 
+        [Fact]
+        public void FirehosePutRecordTest()
+        {
+            var uri = new Uri("https://firehose.eu-west-1.amazonaws.com");
+            var date = DateTime.UtcNow;
+
+            var signv4 = new SignV4(AWSAccessKey, AWSSecret, "eu-west-1");
+            string payload = "{\"DeliveryStreamName\":\"i4io-log-test-2\",\"Record\":{\"Data\":\"AA\"}}";
+
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Clear();
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("AWS4-HMAC-SHA256", signv4.SignFirehosePost(date, uri, payload));
+
+            var result = client.SendAsync(signv4.CreateFirehosePostRequest(date, uri, payload)).GetAwaiter().GetResult();
             var response = result.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+            Assert.Equal(System.Net.HttpStatusCode.OK, result.StatusCode);
         }
     }
 }
